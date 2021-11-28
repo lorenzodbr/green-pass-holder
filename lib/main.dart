@@ -1,17 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:green_pass_holder/information_panel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_qr_reader/flutter_qr_reader.dart';
+import 'package:flutter/services.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter_windowmanager/flutter_windowmanager.dart';
+import 'package:animations/animations.dart';
 
 import 'pass_holder.dart';
 import 'floating_dialog.dart';
 
-//import 'dart:io';
-
 final _appTitle = 'Green Pass';
 enum qrStates { f, t, loading }
+enum authStates { f, t }
+
+bool pickerOpened = false;
+bool hasAlreadyLaunched = false;
 
 qrStates hasQrBeenSet = qrStates.loading;
+authStates hasAuthenticated = authStates.f;
+
+late Widget? _infoPage;
 
 void main() {
   runApp(MyApp());
@@ -27,6 +38,7 @@ class MyApp extends StatelessWidget {
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       home: HomePage(),
+      locale: Locale("it-IT"),
     );
   }
 }
@@ -36,24 +48,122 @@ class HomePage extends StatefulWidget {
   _HomePageState createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    print(state);
+    switch (state) {
+      case AppLifecycleState.resumed:
+        if (hasAuthenticated == authStates.f && !pickerOpened) {
+          authenticate();
+        }
+
+        if (pickerOpened) {
+          pickerOpened = false;
+
+          setState(() {
+            hasAuthenticated = authStates.t;
+          });
+        }
+
+        break;
+      case AppLifecycleState.inactive:
+        setState(() {
+          hasAuthenticated = authStates.f;
+        });
+        break;
+      case AppLifecycleState.paused:
+        setState(() {
+          hasAuthenticated = authStates.f;
+        });
+        break;
+      case AppLifecycleState.detached:
+        setState(() {
+          hasAuthenticated = authStates.f;
+        });
+        break;
+    }
+  }
+
+  @override
+  void initState() {
+    print("è stato già lanciato? -> " + hasAlreadyLaunched.toString());
+    if (!hasAlreadyLaunched) {
+      print("Inizio la creazione della pagina in background...");
+      Future.microtask(() async {
+        _infoPage = new InformationPanel(await _fetchQrDataFromCache());
+        print("Ho terminato la creazione della pagina in background...");
+      });
+
+      hasAlreadyLaunched = true;
+    }
+
+    FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
+
+    //fisso la rotazione dello schermo in verticale
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
+
+    super.initState();
+
+    WidgetsBinding.instance!.addObserver(this);
+
+    SchedulerBinding.instance!.addPostFrameCallback((_) async {
+      authenticate();
+    });
+  }
+
+  void authenticate() async {
+    var localAuth = LocalAuthentication();
+    try {
+      bool didAuthenticate = await localAuth.authenticate(
+          localizedReason: 'Autenticati per accedere all\'app');
+
+      if (didAuthenticate) {
+        setState(() {
+          hasAuthenticated = authStates.t;
+        });
+      } else {
+        SystemNavigator.pop();
+      }
+    } catch (ex) {
+      FloatingDialog.showMyDialog(
+          context,
+          'Errore',
+          'Nessun sistema di autenticazione (PIN o impronta) valido rilevato. Prima di poter utilizzare l\'app, impostane uno.',
+          'OK', callback: () {
+        SystemNavigator.pop();
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<String>(
-      future: getQr(),
+      future: _getQr(),
       builder: (BuildContext context, AsyncSnapshot<String> snapshot) {
         return Scaffold(
           appBar: AppBar(
             title: Text(_appTitle),
             actions: hasQrBeenSet == qrStates.t
-                ? [IconButton(icon: Icon(Icons.folder_open), onPressed: setQr)]
+                ? [
+                    IconButton(
+                        icon: Icon(Icons.folder_open), onPressed: _setQr),
+                    IconButton(
+                        icon: Icon(Icons.info_outline), onPressed: _showInfo)
+                  ]
                 : null,
             backgroundColor: Colors.white,
           ),
           body: Center(
               child: Column(
             children: [
-              buildPassHolder(snapshot.data ?? ''),
+              hasAuthenticated == authStates.t || pickerOpened
+                  ? _buildPassHolder(snapshot.data ?? '')
+                  : Container(
+                      child: _buildLoadingCircle(),
+                    ),
             ],
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -63,12 +173,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget buildPassHolder(String qrData) {
+  Widget _buildPassHolder(String qrData) {
     if (hasQrBeenSet == qrStates.t) {
       return PassHolder(qrData);
     } else if (hasQrBeenSet == qrStates.f) {
       return ElevatedButton(
-        onPressed: setQr,
+        onPressed: _setQr,
         child: Text('Seleziona QR Code',
             style: TextStyle(
               fontSize: 18,
@@ -82,16 +192,19 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void qrBeenSet() {
+  void _qrBeenSet(String qr) {
     setState(() {
       hasQrBeenSet = qrStates.t;
     });
+
+    Future.microtask(() async {
+      print("creo un nuovo oggetto infopage...");
+      _infoPage = InformationPanel(qr);
+    });
   }
 
-  Future<String> getQr() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    String qr = prefs.getString('qr') ?? '';
+  Future<String> _getQr() async {
+    String qr = await _fetchQrDataFromCache();
 
     if (qr != '') {
       setState(() {
@@ -106,7 +219,9 @@ class _HomePageState extends State<HomePage> {
     return qr;
   }
 
-  void setQr() async {
+  void _setQr() async {
+    pickerOpened = true;
+
     final ImagePicker _picker = ImagePicker();
 
     XFile imageXFile =
@@ -114,29 +229,94 @@ class _HomePageState extends State<HomePage> {
 
     String path = imageXFile.path;
 
-    print(path);
-
     if (path != '') {
       String qr = await FlutterQrReader.imgScan(path);
 
       if (qr != '') {
-        print('qr:' + qr);
+        setState(() {
+          hasQrBeenSet = qrStates.loading;
+        });
 
         final prefs = await SharedPreferences.getInstance();
 
         prefs.setString('qr', qr);
 
-        qrBeenSet();
+        _qrBeenSet(qr);
 
         FloatingDialog.showMyDialog(context, 'Operazione eseguita',
-            'QR Code aggiunto correttamente', 'OK');
+            'QR Code aggiunto correttamente.', 'OK');
       } else {
         FloatingDialog.showMyDialog(
-            context,
-            'Errore',
-            'Impossibile aggiungere questo QR Code. Provare con un altro',
-            'Capito');
+            context, 'Errore', 'Impossibile impostare questo QR Code.', 'OK');
       }
     }
+  }
+
+  void _showInfo() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (context) {
+      return Scaffold(
+        appBar: AppBar(
+            title: Text("Informazioni"),
+            backgroundColor: Colors.white,
+            leading: IconButton(
+              icon: Icon(Icons.arrow_back),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            )),
+        body: _infoPage ??
+            FutureBuilder<String>(
+              future: _fetchQrDataFromCache(),
+              builder: (BuildContext context, AsyncSnapshot<String> snapshot) {
+                if (!snapshot.hasData) {
+                  return Container(
+                    child: _buildLoadingCircle(),
+                  );
+                } else {
+                  print("creo un nuovo oggetto infopage...");
+                  return InformationPanel(snapshot.data ?? '');
+                }
+              },
+            ),
+      );
+    }));
+  }
+
+  Widget _buildLoadingCircle() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        SizedBox(
+          child: CircularProgressIndicator(),
+          height: 70,
+          width: 70,
+        ),
+      ],
+    );
+  }
+
+  Future<String> _fetchQrDataFromCache() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    String qr = prefs.getString('qr') ?? '';
+
+    return qr;
+  }
+
+  @override
+  dispose() {
+    FlutterWindowManager.clearFlags(FlutterWindowManager.FLAG_SECURE);
+
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeRight,
+      DeviceOrientation.landscapeLeft,
+    ]);
+
+    WidgetsBinding.instance!.removeObserver(this);
+
+    super.dispose();
   }
 }

@@ -1,5 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.green_pass_holder">
+    package="com.example.green_pass_holder" xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.FLASHLIGHT" tools:node="remove"/>
+    <uses-permission android:name="android.permission.CAMERA" tools:node="remove"/>
+    <uses-permission android:name="android.permission.USE_FINGERPRINT"/>
+    <uses-feature android:name="android.hardware.camera" tools:node="remove"/>
+    <uses-feature android:name="android.hardware.camera.autofocus" tools:node="remove"/>
+    <uses-feature android:name="android.hardware.camera.flash" tools:node="remove"/>
    <application
         android:label="Green Pass"
         android:icon="@mipmap/launcher_icon">

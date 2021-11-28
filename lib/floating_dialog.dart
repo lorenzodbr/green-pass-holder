@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 class FloatingDialog {
   static void showMyDialog(
-      BuildContext context, String title, String body, String dismiss) async {
+      BuildContext context, String title, String body, String dismiss,
+      {Function? callback}) async {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -17,6 +18,9 @@ class FloatingDialog {
               child: Text(dismiss),
               onPressed: () {
                 Navigator.of(context).pop(); //ritorno alla pagina precedente
+                if (callback != null) {
+                  callback();
+                }
               },
             ),
           ],
