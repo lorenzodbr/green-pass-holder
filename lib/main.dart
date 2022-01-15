@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:green_pass_holder/information_panel.dart';
+import 'package:green_pass_holder/pages/information_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_qr_reader/flutter_qr_reader.dart';
@@ -8,8 +8,8 @@ import 'package:local_auth/local_auth.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_windowmanager/flutter_windowmanager.dart';
 
-import 'pass_holder.dart';
-import 'floating_dialog.dart';
+import 'widgets/pass_holder.dart';
+import 'widgets/floating_dialog.dart';
 
 final _appTitle = 'Green Pass';
 enum qrStates { f, t, loading }
@@ -90,7 +90,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (!hasAlreadyLaunched) {
       print("Inizio la creazione della pagina in background...");
       Future.microtask(() async {
-        _infoPage = new InformationPanel(await _fetchQrDataFromCache());
+        _infoPage = new InformationPage(await _fetchQrDataFromCache());
         print("Ho terminato la creazione della pagina in background...");
       });
 
@@ -198,7 +198,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     Future.microtask(() async {
       print("creo un nuovo oggetto infopage...");
-      _infoPage = new InformationPanel(qr);
+      _infoPage = new InformationPage(qr);
     });
   }
 
