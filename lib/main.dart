@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_windowmanager/flutter_windowmanager.dart';
-import 'package:animations/animations.dart';
 
 import 'pass_holder.dart';
 import 'floating_dialog.dart';
@@ -22,7 +21,7 @@ bool hasAlreadyLaunched = false;
 qrStates hasQrBeenSet = qrStates.loading;
 authStates hasAuthenticated = authStates.f;
 
-late Widget? _infoPage;
+late Widget _infoPage;
 
 void main() {
   runApp(MyApp());
@@ -199,7 +198,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     Future.microtask(() async {
       print("creo un nuovo oggetto infopage...");
-      _infoPage = InformationPanel(qr);
+      _infoPage = new InformationPanel(qr);
     });
   }
 
@@ -253,32 +252,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _showInfo() {
+    print("apro la pagina delle informazioni");
+
     Navigator.of(context).push(MaterialPageRoute(builder: (context) {
-      return Scaffold(
-        appBar: AppBar(
-            title: Text("Informazioni"),
-            backgroundColor: Colors.white,
-            leading: IconButton(
-              icon: Icon(Icons.arrow_back),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            )),
-        body: _infoPage ??
-            FutureBuilder<String>(
-              future: _fetchQrDataFromCache(),
-              builder: (BuildContext context, AsyncSnapshot<String> snapshot) {
-                if (!snapshot.hasData) {
-                  return Container(
-                    child: _buildLoadingCircle(),
-                  );
-                } else {
-                  print("creo un nuovo oggetto infopage...");
-                  return InformationPanel(snapshot.data ?? '');
-                }
-              },
-            ),
-      );
+      return _infoPage;
     }));
   }
 
